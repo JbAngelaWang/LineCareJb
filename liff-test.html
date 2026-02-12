@@ -2,51 +2,83 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>LIFF Test</title>
+  <title>傑報外籍看護服務 LIFF Landing Page</title>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    #result { margin-top: 20px; }
+    button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+  </style>
 </head>
 <body>
-  <h1>LIFF 測試頁</h1>
-  <div id="result"></div>
+  <h1>傑報外籍看護服務</h1>
+  <div id="result">載入中...</div>
+  <button id="addFriendBtn" style="display:none;">加我們 LINE 官方帳號</button>
 
 <script>
-// 抓 UTM
+// 1️⃣ 抓 UTM
 function getUTM() {
   const params = new URLSearchParams(window.location.search);
   return {
-    utm_source: params.get("utm_source"),
-    utm_medium: params.get("utm_medium"),
-    utm_campaign: params.get("utm_campaign"),
-    utm_content: params.get("utm_content")
+    utm_source: params.get("utm_source") || "",
+    utm_medium: params.get("utm_medium") || "",
+    utm_campaign: params.get("utm_campaign") || "",
+    utm_content: params.get("utm_content") || ""
   };
 }
 
-// 傳資料到 Google Sheet
+// 2️⃣ 傳資料到 Google Sheet
 async function sendDataToSheet(userId, friendFlag) {
   const utm = getUTM();
-  await fetch("https://script.google.com/macros/s/AKfycbxqnZaa0_77vGrZtF1hzGjXCPYrkodc-DTGLh6ou19n3Dp0iohJIPQD-YfMUa2bw0UX/exec", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ userId, friendFlag, ...utm })
-  });
+  try {
+    await fetch("https://script.google.com/macros/s/AKfycbxqnZaa0_77vGrZtF1hzGjXCPYrkodc-DTGLh6ou19n3Dp0iohJIPQD-YfMUa2bw0UX/exec", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, friendFlag, ...utm, timestamp: new Date().toISOString() })
+    });
+  } catch (err) {
+    console.error("送 Google Sheet 失敗", err);
+  }
 }
 
+// 3️⃣ 初始化 LIFF
 async function main() {
-  await liff.init({ liffId: "2009110865-FvR3qo6e" });
+  try {
+    await liff.init({ liffId: "2009110865-FvR3qo6e" });
 
-  if (!liff.isLoggedIn()) {
-    liff.login({ redirectUri: window.location.href });
-    return;
+    if (!liff.isLoggedIn()) {
+      liff.login({ redirectUri: window.location.href });
+      return;
+    }
+
+    const profile = await liff.getProfile().catch(() => null);
+    const friendship = await liff.getFriendship().catch(() => ({ friendFlag: false }));
+
+    // 顯示資訊
+    if (profile) {
+      document.getElementById("result").innerHTML =
+        "userId: " + profile.userId + "<br>" +
+        "friendFlag: " + friendship.friendFlag;
+    } else {
+      document.getElementById("result").innerHTML = "無法取得 LINE 資訊";
+    }
+
+    // 傳到 Google Sheet
+    if (profile) {
+      await sendDataToSheet(profile.userId, friendship.friendFlag);
+    }
+
+    // 顯示加好友按鈕
+    const btn = document.getElementById("addFriendBtn");
+    btn.style.display = "inline-block";
+    btn.onclick = () => {
+      window.open("https://line.me/R/ti/p/@jbcare", "_blank");
+    }
+
+  } catch (err) {
+    console.error("LIFF 初始化失敗", err);
+    document.getElementById("result").innerHTML = "LIFF 初始化失敗";
   }
-
-  const profile = await liff.getProfile();
-  const friendship = await liff.getFriendship();
-
-  document.getElementById("result").innerHTML =
-    "userId: " + profile.userId +
-    "<br>friendFlag: " + friendship.friendFlag;
-
-  await sendDataToSheet(profile.userId, friendship.friendFlag);
 }
 
 main();
